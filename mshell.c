@@ -96,7 +96,7 @@ int main(int argc, char *argv[]){
 			}
 			command* com = pickfirstcommand(ln);
 			if(findCommand(com->argv[0],com->argv) == 0){
-				while(com->argv[0] != NULL){
+				while(com != NULL){
 					int child_pid = fork();
 					if(child_pid == 0){
 						int i = 0;
@@ -128,12 +128,12 @@ int main(int argc, char *argv[]){
 							i++;
 						}
 						
-						if(check_status(execvp(com->argv[0],com->argv),com->argv) == -1)
+						if(check_status(execvp(com->argv[0],com->argv),com->argv[0]) == -1)
 							exit(EXEC_FAILURE);
 						
 					}else waitpid(child_pid,NULL,0);
 					
-					com = nextcommand();
+					com++;
 				}
 			}
 		}
