@@ -9,8 +9,6 @@
 #include "utils.h"
 #include "builtins.h"
 
-
-
 int findCommand(char* name, char** argv){
 	int it = 0;
 	while(builtins_table[it].name != NULL){
@@ -24,18 +22,25 @@ int findCommand(char* name, char** argv){
 	return 0;
 }
 
-int check_status(){
-	switch(errno){
-							case ENOENT:
-										fprintf(stderr,"%s: no such file or directory!\n",com->redirs[0]->filename);
-										break;
-									case ENOTDIR:
-										fprintf(stderr,"%s: no such file or directory!\n",com->redirs[0]->filename);
-										break;
-									case EACCES:
-										fprintf(stderr,"%s: permision denied\n",com->redirs[0]->filename);
-										break;
-								}
+int check_status(int status,char* filename){
+	if(status == -1){
+		switch(errno){
+			case ENOENT:
+				fprintf(stderr,"%s: no such file or directory!\n",filename);
+				break;
+			case ENOTDIR:
+				fprintf(stderr,"%s: no such file or directory!\n",filename);
+				break;
+			case EACCES:
+				fprintf(stderr,"%s: permision denied\n",filename);
+				break;
+			default:
+				fprintf(stderr,"%s: exec error\n",filename);
+				break;
+		}
+	}
+	
+	return status;
 }
 
 int main(int argc, char *argv[]){
@@ -91,70 +96,45 @@ int main(int argc, char *argv[]){
 			}
 			command* com = pickfirstcommand(ln);
 			if(findCommand(com->argv[0],com->argv) == 0){
-				int child_pid = fork();
-				if(child_pid == 0){
-					int i = 0;
-					while(com->redirs[i] != NULL){
-						if(i==0 && IS_RIN(com->redirs[0]->flags)){
-							close(0);
-							int status = open(com->redirs[0]->filename,O_RDONLY);
-							if(status == -1){
-								
-								
-								exit(EXEC_FAILURE);
-							}else if(status != 0){
-								fprintf(stderr,"Wrong descriptor!\n");
-								exit(EXEC_FAILURE);
+				while(com->argv[0] != NULL){
+					int child_pid = fork();
+					if(child_pid == 0){
+						int i = 0;
+						while(com->redirs[i] != NULL){
+							if(IS_RIN(com->redirs[i]->flags)){
+								close(0);
+								if(check_status(open(com->redirs[i]->filename,O_RDONLY),com->redirs[i]->filename) != 0){
+									fprintf(stderr,"Something went wrong!\n");
+									exit(EXEC_FAILURE);
+								}
 							}
 							
-						}
-						
-						if(i==1 && (IS_ROUT(com->redirs[1]->flags) || IS_RAPPEND(com->redirs[1]->flags))){
-							close(1);
-							int status;
-							if(IS_RAPPEND(com->redirs[1]->flags))
-								status = open(com->redirs[1]->filename,O_CREAT|O_WRONLY|O_APPEND,S_IRUSR|S_IWUSR);
-							else status = open(com->redirs[1]->filename,O_CREAT|O_WRONLY|O_TRUNC,S_IRUSR|S_IWUSR);
-							if(status == -1){
-								switch(errno){
-									case ENOENT:
-										fprintf(stderr,"%s: no such file or directory!\n",com->redirs[1]->filename);
-										break;
-									case ENOTDIR:
-										fprintf(stderr,"%s: no such file or directory!\n",com->redirs[1]->filename);
-										break;
-									case EACCES:
-										fprintf(stderr,"%s: permision denied\n",com->redirs[1]->filename);
-										break;
+							if(IS_ROUT(com->redirs[i]->flags)){
+								close(1);
+								if(check_status(open(com->redirs[i]->filename,O_CREAT|O_WRONLY|O_TRUNC,S_IRUSR|S_IWUSR),com->redirs[i]->filename) != 1){
+									fprintf(stderr,"Something went wrong!\n");
+									exit(EXEC_FAILURE);
 								}
-								
-								exit(EXEC_FAILURE);
-							}else if(status != 1){
-								fprintf(stderr,"Wrong descriptor!\n");
-								exit(EXEC_FAILURE);
 							}
+							
+							if(IS_RAPPEND(com->redirs[i]->flags)){
+								close(1);
+								if(check_status(open(com->redirs[i]->filename,O_CREAT|O_WRONLY|O_APPEND,S_IRUSR|S_IWUSR),com->redirs[i]->filename) != 1){
+									fprintf(stderr,"Something went wrong!\n");
+									exit(EXEC_FAILURE);
+								}
+							}
+							
+							i++;
 						}
 						
-						i++;
-					}
+						if(check_status(execvp(com->argv[0],com->argv),com->argv) == -1)
+							exit(EXEC_FAILURE);
+						
+					}else waitpid(child_pid,NULL,0);
 					
-					if(execvp(com->argv[0],com->argv) == -1){
-						switch(errno){
-							case ENOENT:
-								fprintf(stderr,"%s: no such file or directory!\n",com->argv[0]);
-								break;
-							case EACCES:
-								fprintf(stderr,"%s: permision denied\n",com->argv[0]);
-								break;
-							default:
-								fprintf(stderr,"%s: exec error\n",com->argv[0]);
-								break;
-						}
-						exit(EXEC_FAILURE);
-					}
-					
-					close(0);close(1);
-				}else waitpid(child_pid,NULL,0);	
+					com = nextcommand();
+				}
 			}
 		}
 	}
